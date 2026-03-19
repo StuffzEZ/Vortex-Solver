@@ -91,3 +91,6 @@ The code is [GPL-3.0 licensed](https://www.gnu.org/licenses/gpl-3.0.html) — us
 >
 > You should have received a copy of the GNU General Public License
 > along with this program. If not, see <https://www.gnu.org/licenses>.
+
+This project was made with the use of generative AI.
+Readme inspired by [iis.Stupid.Menu](https://github.com/iiDk-the-actual/iis.Stupid.Menu)
