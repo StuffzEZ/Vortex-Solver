@@ -1,0 +1,1987 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Vortex Solver — Universal AI Tutor</title>
+  <script src="vortex-core.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,300;12..96,400;12..96,600;12..96,800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet"/>
+
+  <style>
+    /* ═══════════════════════════════
+       TOKENS
+    ═══════════════════════════════ */
+    :root {
+      --bg:       #060810;
+      --bg2:      #0b0f1a;
+      --bg3:      #111827;
+      --bg4:      #1a2235;
+      --border:   #1e2d3d;
+      --border2:  #263348;
+      --text:     #e8edf5;
+      --muted:    #5a6a80;
+      --muted2:   #3d4f62;
+      --accent:   #7c6aff;
+      --accent-g: #34d399;
+      --accent-o: #fb923c;
+      --accent-b: #38bdf8;
+      --accent-p: #f472b6;
+      --danger:   #f87171;
+      --r:        12px;
+      --font:     'Bricolage Grotesque', sans-serif;
+      --mono:     'JetBrains Mono', monospace;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; font-size: 16px; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font);
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* ─── SCANLINE / NOISE BG ─── */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background:
+        repeating-linear-gradient(
+          0deg,
+          transparent,
+          transparent 2px,
+          rgba(124,106,255,.012) 2px,
+          rgba(124,106,255,.012) 4px
+        );
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* ─── GLOW ORBS ─── */
+    .orb {
+      position: fixed;
+      border-radius: 50%;
+      filter: blur(120px);
+      opacity: .18;
+      pointer-events: none;
+      z-index: 0;
+    }
+    .orb-1 { width: 600px; height: 600px; background: var(--accent); top: -200px; left: -200px; }
+    .orb-2 { width: 500px; height: 500px; background: var(--accent-g); bottom: -150px; right: -100px; }
+    .orb-3 { width: 300px; height: 300px; background: var(--accent-b); top: 40%; left: 50%; transform: translateX(-50%); }
+
+    /* ═══════════════════════════════
+       NAV
+    ═══════════════════════════════ */
+    nav {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 32px;
+      height: 60px;
+      background: rgba(6,8,16,.8);
+      backdrop-filter: blur(16px);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .nav-logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 800;
+      font-size: 1.1rem;
+      letter-spacing: -.02em;
+      text-decoration: none;
+      color: var(--text);
+    }
+
+    .logo-vortex {
+      width: 28px; height: 28px;
+      background: conic-gradient(from 0deg, var(--accent), var(--accent-g), var(--accent-b), var(--accent));
+      border-radius: 50%;
+      animation: spin 6s linear infinite;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .nav-links {
+      display: flex;
+      gap: 4px;
+      align-items: center;
+    }
+
+    .nav-link {
+      padding: 6px 14px;
+      border-radius: 8px;
+      font-size: .8rem;
+      font-weight: 600;
+      color: var(--muted);
+      text-decoration: none;
+      transition: color .2s, background .2s;
+      cursor: pointer;
+      background: none;
+      border: none;
+    }
+
+    .nav-link:hover, .nav-link.active { color: var(--text); background: var(--bg3); }
+
+    .nav-gh {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 14px;
+      border-radius: 8px;
+      background: var(--bg3);
+      border: 1px solid var(--border2);
+      color: var(--text);
+      font-size: .78rem;
+      font-weight: 600;
+      text-decoration: none;
+      transition: border-color .2s;
+    }
+    .nav-gh:hover { border-color: var(--accent); }
+
+    /* ═══════════════════════════════
+       PAGE SECTIONS
+    ═══════════════════════════════ */
+    .section { display: none; position: relative; z-index: 1; }
+    .section.active { display: block; }
+
+    /* ═══════════════════════════════
+       SOLVER PAGE
+    ═══════════════════════════════ */
+    .solver-wrap {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 48px 24px 80px;
+    }
+
+    /* Hero */
+    .hero { text-align: center; margin-bottom: 48px; }
+
+    .hero-eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-size: .7rem;
+      font-weight: 600;
+      letter-spacing: .14em;
+      text-transform: uppercase;
+      color: var(--accent);
+      background: rgba(124,106,255,.1);
+      border: 1px solid rgba(124,106,255,.25);
+      border-radius: 100px;
+      padding: 5px 14px;
+      margin-bottom: 20px;
+    }
+
+    .pulse { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); animation: pulse 2s ease infinite; }
+    @keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.3;transform:scale(.6)} }
+
+    .hero h1 {
+      font-size: clamp(2.6rem, 7vw, 4.4rem);
+      font-weight: 800;
+      line-height: 1.04;
+      letter-spacing: -.03em;
+      margin-bottom: 16px;
+    }
+
+    .hero h1 .grad {
+      background: linear-gradient(135deg, var(--accent) 0%, var(--accent-b) 50%, var(--accent-g) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .hero-sub {
+      font-size: .95rem;
+      color: var(--muted);
+      line-height: 1.7;
+      max-width: 520px;
+      margin: 0 auto;
+    }
+
+    /* Template grid */
+    .template-section { margin-bottom: 32px; }
+
+    .section-label {
+      font-size: .68rem;
+      font-weight: 600;
+      letter-spacing: .14em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 12px;
+    }
+
+    .template-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+      gap: 8px;
+    }
+
+    .tpl-btn {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+      padding: 14px 10px;
+      background: var(--bg2);
+      border: 1.5px solid var(--border);
+      border-radius: var(--r);
+      cursor: pointer;
+      transition: border-color .18s, background .18s, transform .12s;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .tpl-btn::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: var(--tpl-color, var(--accent));
+      opacity: 0;
+      transition: opacity .2s;
+    }
+
+    .tpl-btn:hover::before { opacity: .06; }
+    .tpl-btn:hover { border-color: var(--tpl-color, var(--accent)); transform: translateY(-2px); }
+
+    .tpl-btn.selected {
+      border-color: var(--tpl-color, var(--accent));
+      background: var(--bg3);
+    }
+
+    .tpl-btn.selected::before { opacity: .1; }
+
+    .tpl-icon {
+      font-size: 1.3rem;
+      font-family: var(--mono);
+      color: var(--tpl-color, var(--accent));
+      position: relative;
+    }
+
+    .tpl-name {
+      font-size: .72rem;
+      font-weight: 600;
+      color: var(--text);
+      text-align: center;
+      position: relative;
+    }
+
+    .tpl-example-hint {
+      font-size: .6rem;
+      color: var(--muted);
+      position: relative;
+      text-align: center;
+    }
+
+    /* Input card */
+    .input-card {
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      overflow: hidden;
+      margin-bottom: 20px;
+    }
+
+    .input-tabs {
+      display: flex;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .itab {
+      flex: 1;
+      padding: 13px 16px;
+      background: none;
+      border: none;
+      color: var(--muted);
+      font-family: var(--font);
+      font-size: .78rem;
+      font-weight: 600;
+      letter-spacing: .05em;
+      text-transform: uppercase;
+      cursor: pointer;
+      transition: color .2s, background .2s;
+      position: relative;
+    }
+
+    .itab::after {
+      content: '';
+      position: absolute;
+      bottom: 0; left: 16px; right: 16px;
+      height: 2px;
+      background: var(--accent);
+      border-radius: 2px 2px 0 0;
+      transform: scaleX(0);
+      transition: transform .2s;
+    }
+
+    .itab.active { color: var(--text); background: var(--bg3); }
+    .itab.active::after { transform: scaleX(1); }
+
+    .itab-content { display: none; padding: 20px; }
+    .itab-content.active { display: block; }
+
+    /* Drop zone */
+    .drop-zone {
+      border: 2px dashed var(--border2);
+      border-radius: 10px;
+      padding: 40px 24px;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color .2s, background .2s;
+      position: relative;
+    }
+
+    .drop-zone:hover, .drop-zone.over {
+      border-color: var(--accent);
+      background: rgba(124,106,255,.04);
+    }
+
+    .drop-zone input {
+      position: absolute; inset: 0;
+      opacity: 0; cursor: pointer;
+      width: 100%; height: 100%;
+    }
+
+    .drop-zone-icon { font-size: 2.2rem; margin-bottom: 8px; }
+    .drop-zone-label { font-weight: 600; font-size: .9rem; color: var(--text); margin-bottom: 4px; }
+    .drop-zone-hint { font-size: .72rem; color: var(--muted); }
+
+    .file-pill {
+      display: none;
+      align-items: center;
+      gap: 10px;
+      margin-top: 12px;
+      background: var(--bg3);
+      border: 1px solid var(--border2);
+      border-radius: 8px;
+      padding: 10px 14px;
+    }
+    .file-pill.shown { display: flex; }
+    .file-pill img { width: 44px; height: 44px; object-fit: cover; border-radius: 6px; }
+    .file-pill-name { font-size: .78rem; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+    /* Textarea */
+    textarea {
+      width: 100%;
+      background: var(--bg3);
+      border: 1px solid var(--border2);
+      border-radius: 10px;
+      padding: 16px;
+      color: var(--text);
+      font-family: var(--font);
+      font-size: .9rem;
+      line-height: 1.7;
+      resize: vertical;
+      min-height: 130px;
+      outline: none;
+      transition: border-color .2s;
+    }
+    textarea:focus { border-color: var(--accent); }
+    textarea::placeholder { color: var(--muted2); }
+
+    /* Example chips */
+    .examples-row {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+      margin-top: 10px;
+    }
+
+    .example-chip {
+      background: var(--bg3);
+      border: 1px solid var(--border2);
+      border-radius: 100px;
+      padding: 4px 12px;
+      font-size: .7rem;
+      color: var(--muted);
+      cursor: pointer;
+      transition: color .15s, border-color .15s;
+    }
+
+    .example-chip:hover { color: var(--text); border-color: var(--accent); }
+
+    .char-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-top: 6px;
+    }
+
+    .char-count { font-size: .68rem; color: var(--muted); font-family: var(--mono); }
+
+    /* Action row */
+    .action-row {
+      padding: 16px 20px 20px;
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      border-top: 1px solid var(--border);
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      padding: 11px 20px;
+      border-radius: 9px;
+      border: 1px solid transparent;
+      font-family: var(--font);
+      font-size: .82rem;
+      font-weight: 700;
+      letter-spacing: .03em;
+      cursor: pointer;
+      transition: all .15s;
+      outline: none;
+    }
+
+    .btn:active { transform: scale(.97); }
+    .btn:disabled { opacity: .38; cursor: not-allowed; transform: none; }
+
+    .btn-primary {
+      background: var(--accent);
+      color: #fff;
+    }
+    .btn-primary:not(:disabled):hover { background: #9580ff; box-shadow: 0 0 24px rgba(124,106,255,.4); }
+
+    .btn-ghost {
+      background: var(--bg3);
+      color: var(--text);
+      border-color: var(--border2);
+    }
+    .btn-ghost:hover { border-color: var(--accent); }
+
+    .btn-danger {
+      background: transparent;
+      color: var(--danger);
+      border-color: rgba(248,113,113,.3);
+    }
+    .btn-danger:hover { background: rgba(248,113,113,.08); }
+
+    /* ═══════════════════════════════
+       PROGRESS
+    ═══════════════════════════════ */
+    .progress-card {
+      display: none;
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: var(--r);
+      padding: 18px 22px;
+      margin-bottom: 20px;
+    }
+    .progress-card.on { display: block; }
+
+    .prog-row {
+      display: flex;
+      justify-content: space-between;
+      font-size: .76rem;
+      color: var(--muted);
+      margin-bottom: 8px;
+      font-family: var(--mono);
+    }
+
+    .prog-track {
+      height: 3px;
+      background: var(--bg4);
+      border-radius: 100px;
+      overflow: hidden;
+      margin-bottom: 12px;
+    }
+
+    .prog-fill {
+      height: 100%;
+      background: linear-gradient(90deg, var(--accent), var(--accent-b));
+      width: 0%;
+      border-radius: 100px;
+      transition: width .4s ease;
+    }
+
+    .prog-log {
+      max-height: 70px;
+      overflow-y: auto;
+      font-size: .68rem;
+      font-family: var(--mono);
+      color: var(--muted);
+      line-height: 1.9;
+    }
+
+    .prog-log-line { opacity: .7; }
+    .prog-log-line:last-child { opacity: 1; color: var(--accent-g); }
+
+    /* ═══════════════════════════════
+       RESULT
+    ═══════════════════════════════ */
+    .result-zone { display: none; animation: fadeUp .35s ease; }
+    .result-zone.on { display: block; }
+
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(12px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    .result-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 14px;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .result-label {
+      font-size: .68rem;
+      font-weight: 600;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    .answer-banner {
+      background: linear-gradient(135deg, #0b1f14 0%, #0a1a10 100%);
+      border: 1px solid rgba(52,211,153,.25);
+      border-radius: var(--r);
+      padding: 22px 26px;
+      display: flex;
+      align-items: center;
+      gap: 18px;
+      margin-bottom: 14px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .answer-banner::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0;
+      width: 3px; height: 100%;
+      background: var(--accent-g);
+    }
+
+    .answer-icon { font-size: 2rem; flex-shrink: 0; }
+
+    .answer-label {
+      font-size: .62rem;
+      font-weight: 700;
+      letter-spacing: .16em;
+      text-transform: uppercase;
+      color: #6ee7b7;
+      margin-bottom: 5px;
+    }
+
+    .answer-value {
+      font-size: 1.7rem;
+      font-weight: 800;
+      color: #ecfdf5;
+      word-break: break-word;
+      letter-spacing: -.02em;
+    }
+
+    .copy-ans {
+      margin-left: auto;
+      background: rgba(52,211,153,.1);
+      border: 1px solid rgba(52,211,153,.2);
+      border-radius: 7px;
+      padding: 7px 14px;
+      color: var(--accent-g);
+      font-family: var(--font);
+      font-size: .72rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: background .2s;
+      flex-shrink: 0;
+    }
+    .copy-ans:hover { background: rgba(52,211,153,.2); }
+
+    /* Problem snippet */
+    .problem-pill {
+      background: var(--bg3);
+      border-left: 3px solid var(--accent-b);
+      border-radius: 0 8px 8px 0;
+      padding: 10px 14px;
+      font-size: .78rem;
+      color: var(--muted);
+      margin-bottom: 14px;
+      white-space: pre-wrap;
+      max-height: 80px;
+      overflow-y: auto;
+    }
+
+    .problem-pill strong {
+      display: block;
+      font-size: .58rem;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+      color: var(--accent-b);
+      margin-bottom: 3px;
+    }
+
+    /* Steps */
+    .steps-wrap {
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: var(--r);
+      overflow: hidden;
+      margin-bottom: 14px;
+    }
+
+    .steps-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 11px 16px;
+      background: var(--bg3);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .steps-bar-label {
+      font-size: .68rem;
+      font-weight: 700;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    .steps-toggle {
+      background: none; border: none;
+      color: var(--accent-b);
+      font-family: var(--mono);
+      font-size: .72rem;
+      cursor: pointer;
+    }
+
+    .steps-body {
+      padding: 18px 20px;
+      font-size: .86rem;
+      line-height: 1.88;
+      white-space: pre-wrap;
+      color: #c5d0de;
+      font-family: var(--mono);
+      max-height: 520px;
+      overflow-y: auto;
+      transition: max-height .3s ease, padding .3s;
+    }
+
+    .steps-body.collapsed { max-height: 0; padding-top: 0; padding-bottom: 0; overflow: hidden; }
+
+    .steps-body::-webkit-scrollbar { width: 4px; }
+    .steps-body::-webkit-scrollbar-track { background: transparent; }
+    .steps-body::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+
+    /* Highlight step numbers in reasoning */
+    .step-n { color: var(--accent-o); font-weight: 700; }
+    .final-ans-line { color: var(--accent-g); font-weight: 700; }
+
+    .result-meta {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .meta-pill {
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 3px 10px;
+      font-size: .67rem;
+      font-family: var(--mono);
+      color: var(--muted);
+    }
+
+    .err-box {
+      background: rgba(248,113,113,.07);
+      border: 1px solid rgba(248,113,113,.3);
+      border-radius: var(--r);
+      padding: 16px 20px;
+      color: #fca5a5;
+      font-size: .88rem;
+    }
+
+    /* History */
+    .history-wrap { margin-top: 40px; }
+
+    .history-head {
+      display: flex; align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+    }
+
+    .history-list { display: flex; flex-direction: column; gap: 6px; }
+
+    .hist-item {
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: 9px;
+      padding: 11px 16px;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      cursor: pointer;
+      transition: border-color .18s, background .18s;
+    }
+    .hist-item:hover { border-color: var(--accent); background: var(--bg3); }
+
+    .hist-badge {
+      font-size: .62rem;
+      font-weight: 700;
+      padding: 2px 8px;
+      border-radius: 4px;
+      flex-shrink: 0;
+      font-family: var(--mono);
+    }
+
+    .hist-ans { font-weight: 700; font-size: .9rem; color: var(--accent-g); min-width: 60px; }
+    .hist-q   { font-size: .74rem; color: var(--muted); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .hist-t   { font-size: .64rem; color: var(--muted2); flex-shrink: 0; }
+
+    /* ═══════════════════════════════
+       DOCS PAGE
+    ═══════════════════════════════ */
+    .docs-wrap {
+      max-width: 820px;
+      margin: 0 auto;
+      padding: 48px 24px 100px;
+      display: grid;
+      grid-template-columns: 200px 1fr;
+      gap: 40px;
+      align-items: start;
+    }
+
+    @media (max-width: 680px) {
+      .docs-wrap { grid-template-columns: 1fr; }
+      .docs-sidebar { display: none; }
+    }
+
+    .docs-sidebar {
+      position: sticky;
+      top: 80px;
+    }
+
+    .docs-nav-label {
+      font-size: .64rem;
+      font-weight: 700;
+      letter-spacing: .14em;
+      text-transform: uppercase;
+      color: var(--muted2);
+      margin-bottom: 10px;
+      padding-left: 10px;
+    }
+
+    .docs-nav-link {
+      display: block;
+      padding: 7px 10px;
+      border-radius: 7px;
+      font-size: .8rem;
+      color: var(--muted);
+      text-decoration: none;
+      cursor: pointer;
+      transition: color .15s, background .15s;
+      border: none;
+      background: none;
+      width: 100%;
+      text-align: left;
+    }
+    .docs-nav-link:hover { color: var(--text); background: var(--bg3); }
+    .docs-nav-link.here { color: var(--accent); background: rgba(124,106,255,.1); }
+
+    .docs-body { min-width: 0; }
+
+    .docs-h1 {
+      font-size: 2.4rem;
+      font-weight: 800;
+      letter-spacing: -.03em;
+      margin-bottom: 8px;
+    }
+
+    .docs-lead {
+      font-size: 1rem;
+      color: var(--muted);
+      margin-bottom: 40px;
+      line-height: 1.6;
+    }
+
+    .docs-section {
+      margin-bottom: 52px;
+      scroll-margin-top: 80px;
+    }
+
+    .docs-h2 {
+      font-size: 1.3rem;
+      font-weight: 700;
+      letter-spacing: -.02em;
+      margin-bottom: 14px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .docs-h2 .docs-tag {
+      font-size: .6rem;
+      font-weight: 700;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+      padding: 2px 8px;
+      border-radius: 4px;
+      background: rgba(124,106,255,.15);
+      color: var(--accent);
+    }
+
+    .docs-p {
+      font-size: .9rem;
+      line-height: 1.78;
+      color: #b0beca;
+      margin-bottom: 14px;
+    }
+
+    .docs-p a { color: var(--accent-b); text-decoration: none; }
+    .docs-p a:hover { text-decoration: underline; }
+
+    /* Code blocks */
+    .code-block {
+      background: #080c14;
+      border: 1px solid var(--border);
+      border-radius: var(--r);
+      overflow: hidden;
+      margin: 16px 0;
+      font-family: var(--mono);
+    }
+
+    .code-block-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 16px;
+      background: var(--bg3);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .code-lang {
+      font-size: .65rem;
+      font-weight: 700;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    .code-copy {
+      background: none;
+      border: none;
+      color: var(--muted);
+      font-size: .68rem;
+      cursor: pointer;
+      font-family: var(--mono);
+      transition: color .15s;
+    }
+    .code-copy:hover { color: var(--accent-g); }
+
+    .code-block pre {
+      padding: 18px 20px;
+      overflow-x: auto;
+      font-size: .82rem;
+      line-height: 1.75;
+      color: #c9d1d9;
+    }
+
+    /* Inline code */
+    code {
+      font-family: var(--mono);
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      border-radius: 5px;
+      padding: 1px 6px;
+      font-size: .82em;
+      color: var(--accent-b);
+    }
+
+    /* Method table */
+    .method-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: .84rem;
+      margin: 14px 0;
+    }
+
+    .method-table th {
+      text-align: left;
+      padding: 8px 14px;
+      background: var(--bg3);
+      font-size: .65rem;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+      color: var(--muted);
+      border: 1px solid var(--border);
+    }
+
+    .method-table td {
+      padding: 10px 14px;
+      border: 1px solid var(--border);
+      vertical-align: top;
+      line-height: 1.55;
+      color: #b0beca;
+    }
+
+    .method-table tr:hover td { background: var(--bg3); }
+
+    /* Template card grid in docs */
+    .tpl-docs-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 10px;
+      margin: 16px 0;
+    }
+
+    .tpl-doc-card {
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: var(--r);
+      padding: 14px 16px;
+    }
+
+    .tpl-doc-top {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+
+    .tpl-doc-icon {
+      font-family: var(--mono);
+      font-size: 1rem;
+    }
+
+    .tpl-doc-name { font-weight: 700; font-size: .85rem; }
+    .tpl-doc-id   { font-family: var(--mono); font-size: .68rem; padding: 1px 6px; border-radius: 4px; margin-left: auto; }
+    .tpl-doc-ex   { font-size: .72rem; color: var(--muted); line-height: 1.55; }
+
+    /* Result shape box */
+    .shape-box {
+      background: #080c14;
+      border: 1px solid var(--border);
+      border-radius: var(--r);
+      padding: 18px 20px;
+      font-family: var(--mono);
+      font-size: .82rem;
+      color: #c9d1d9;
+      line-height: 1.8;
+      margin: 14px 0;
+    }
+
+    .shape-key   { color: var(--accent-b); }
+    .shape-type  { color: #fbbf24; }
+    .shape-comma { color: var(--muted); }
+    .shape-brace { color: var(--muted); }
+
+    /* Callout */
+    .callout {
+      background: rgba(124,106,255,.08);
+      border: 1px solid rgba(124,106,255,.2);
+      border-left: 3px solid var(--accent);
+      border-radius: 0 var(--r) var(--r) 0;
+      padding: 14px 18px;
+      font-size: .85rem;
+      color: #c5cfe8;
+      line-height: 1.65;
+      margin: 14px 0;
+    }
+
+    .callout strong { color: var(--accent); }
+
+    /* ═══════════════════════════════
+       TOAST
+    ═══════════════════════════════ */
+    #toast {
+      position: fixed;
+      bottom: 26px;
+      left: 50%;
+      transform: translateX(-50%) translateY(70px);
+      background: var(--bg3);
+      border: 1px solid var(--border2);
+      color: var(--text);
+      padding: 9px 20px;
+      border-radius: 100px;
+      font-size: .78rem;
+      font-family: var(--mono);
+      z-index: 999;
+      transition: transform .28s cubic-bezier(.34,1.56,.64,1);
+      pointer-events: none;
+      white-space: nowrap;
+    }
+    #toast.show { transform: translateX(-50%) translateY(0); }
+
+    /* ═══════════════════════════════
+       RESPONSIVE
+    ═══════════════════════════════ */
+    @media (max-width: 560px) {
+      .hero h1 { font-size: 2rem; }
+      .template-grid { grid-template-columns: repeat(3, 1fr); }
+      .action-row { flex-direction: column; }
+      .btn { justify-content: center; }
+      nav { padding: 0 16px; }
+      .nav-links .nav-link:not(.show-mobile) { display: none; }
+    }
+
+    /* Syntax colour helpers */
+    .c-kw  { color: #ff7b72; }
+    .c-str { color: #a5d6ff; }
+    .c-fn  { color: #d2a8ff; }
+    .c-cm  { color: #8b949e; }
+    .c-num { color: #79c0ff; }
+    .c-var { color: #ffa657; }
+  </style>
+</head>
+<body>
+  <!-- Background orbs -->
+  <div class="orb orb-1"></div>
+  <div class="orb orb-2"></div>
+  <div class="orb orb-3"></div>
+
+  <!-- ══════════ NAV ══════════ -->
+  <nav>
+    <a class="nav-logo" href="#">
+      <div class="logo-vortex"></div>
+      Vortex Solver
+    </a>
+    <div class="nav-links">
+      <button class="nav-link show-mobile active" onclick="showSection('solver')">Solver</button>
+      <button class="nav-link" onclick="showSection('docs')">API Docs</button>
+      <a class="nav-gh" href="https://github.com/StuffzEZ/Vortex-Solver" target="_blank">
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0a8 8 0 100 16A8 8 0 008 0zm2.92 11.22c-.13.18-.4.25-.6.14-1.67-.99-3.78-.72-4.95-.05-.2.1-.44.04-.54-.15-.1-.2-.04-.44.15-.54 1.38-.79 3.74-1.08 5.64.06.2.11.26.36.14.56l-.84-.02zm.79-1.8c-.16.23-.5.3-.73.14-1.9-1.17-4.8-.98-7.05.24-.25.13-.56.03-.68-.2-.13-.24-.03-.55.2-.68 2.55-1.39 5.83-1.53 8-.24.24.15.3.47.14.73l.12.01zm.07-1.85C9.11 6.17 5.8 6.07 3.84 6.68c-.3.09-.62-.07-.71-.37-.09-.3.07-.62.37-.71 2.26-.68 6-.55 8.35 1 .27.17.35.52.18.8-.17.27-.52.35-.8.18l-.15-.01z"/></svg>
+        GitHub
+      </a>
+    </div>
+  </nav>
+
+  <!-- ══════════ SOLVER SECTION ══════════ -->
+  <div class="section active" id="sec-solver">
+    <div class="solver-wrap">
+
+      <!-- Hero -->
+      <div class="hero">
+        <div class="hero-eyebrow"><span class="pulse"></span> Powered by Pollinations AI</div>
+        <h1>The <span class="grad">universal</span><br>answer engine.</h1>
+        <p class="hero-sub">Maths, science, code, history, grammar and more — solved step-by-step. Free forever. No API key needed.</p>
+      </div>
+
+      <!-- Template picker -->
+      <div class="template-section">
+        <div class="section-label">Choose a subject</div>
+        <div class="template-grid" id="tplGrid"></div>
+      </div>
+
+      <!-- Input card -->
+      <div class="input-card">
+        <div class="input-tabs">
+          <button class="itab active" data-tab="text">✏️ Text</button>
+          <button class="itab" data-tab="image">📷 Image</button>
+        </div>
+
+        <!-- Text tab -->
+        <div class="itab-content active" id="itab-text">
+          <textarea id="textInput" placeholder="Type or paste your problem here…" maxlength="5000"></textarea>
+          <div class="char-row">
+            <div class="examples-row" id="examplesRow"></div>
+            <span class="char-count"><span id="charCount">0</span>/5000</span>
+          </div>
+        </div>
+
+        <!-- Image tab -->
+        <div class="itab-content" id="itab-image">
+          <div class="drop-zone" id="dropZone">
+            <input type="file" id="imgInput" accept="image/*"/>
+            <div class="drop-zone-icon">🖼️</div>
+            <div class="drop-zone-label">Drop an image or click to browse</div>
+            <div class="drop-zone-hint">PNG · JPG · WEBP · Typed text reads best</div>
+          </div>
+          <div class="file-pill" id="filePill">
+            <img id="previewImg" alt="preview"/>
+            <span class="file-pill-name" id="fileName">—</span>
+          </div>
+        </div>
+
+        <div class="action-row">
+          <button class="btn btn-primary" id="solveBtn">⚡ Solve</button>
+          <button class="btn btn-ghost" id="retryBtn" disabled>↺ Retry</button>
+          <button class="btn btn-danger" id="clearBtn">✕ Clear</button>
+        </div>
+      </div>
+
+      <!-- Progress -->
+      <div class="progress-card" id="progCard">
+        <div class="prog-row">
+          <span id="progMsg">Starting…</span>
+          <span id="progPct" style="font-family:var(--mono)">0%</span>
+        </div>
+        <div class="prog-track"><div class="prog-fill" id="progFill"></div></div>
+        <div class="prog-log" id="progLog"></div>
+      </div>
+
+      <!-- Result -->
+      <div class="result-zone" id="resultZone">
+        <div class="result-header">
+          <span class="result-label">Solution</span>
+        </div>
+        <div id="resultContent"></div>
+      </div>
+
+      <!-- History -->
+      <div class="history-wrap" id="histWrap" style="display:none">
+        <div class="history-head">
+          <span class="section-label">Recent</span>
+          <button class="btn btn-danger" style="padding:5px 12px;font-size:.7rem;" id="clearHistBtn">Clear</button>
+        </div>
+        <div class="history-list" id="histList"></div>
+      </div>
+
+    </div>
+  </div><!-- /solver -->
+
+  <!-- ══════════ DOCS SECTION ══════════ -->
+  <div class="section" id="sec-docs">
+    <div class="docs-wrap">
+
+      <!-- Sidebar -->
+      <div class="docs-sidebar">
+        <div class="docs-nav-label">Contents</div>
+        <button class="docs-nav-link here" onclick="scrollToDoc('#intro')">Introduction</button>
+        <button class="docs-nav-link" onclick="scrollToDoc('#install')">Installation</button>
+        <button class="docs-nav-link" onclick="scrollToDoc('#quickstart')">Quick Start</button>
+        <button class="docs-nav-link" onclick="scrollToDoc('#methods')">Methods</button>
+        <button class="docs-nav-link" onclick="scrollToDoc('#result')">Result Object</button>
+        <button class="docs-nav-link" onclick="scrollToDoc('#templates-ref')">Templates</button>
+        <button class="docs-nav-link" onclick="scrollToDoc('#progress')">Progress Events</button>
+        <button class="docs-nav-link" onclick="scrollToDoc('#render')">renderInto()</button>
+        <button class="docs-nav-link" onclick="scrollToDoc('#examples-full')">Full Examples</button>
+        <button class="docs-nav-link" onclick="scrollToDoc('#implementation')">Implementation Guide</button>
+        <button class="docs-nav-link" onclick="scrollToDoc('#limits')">Limitations</button>
+      </div>
+
+      <!-- Body -->
+      <div class="docs-body">
+
+        <h1 class="docs-h1">Vortex Solver API</h1>
+        <p class="docs-lead">
+          A free, key-less, browser-native AI solver for any subject. Drop one <code>&lt;script&gt;</code> tag on your page and you have a full reasoning engine.
+          <a href="https://github.com/StuffzEZ/Vortex-Solver" target="_blank">View on GitHub ↗</a>
+        </p>
+
+        <!-- ── Intro ── -->
+        <div class="docs-section" id="intro">
+          <h2 class="docs-h2">Introduction <span class="docs-tag">Overview</span></h2>
+          <p class="docs-p">
+            Vortex Solver is a lightweight JavaScript library that connects to <a href="https://pollinations.ai" target="_blank">Pollinations AI</a> — a completely free, no-key-required AI API — to solve problems across 10 subject domains. It also bundles Tesseract.js OCR so it can read problems from images.
+          </p>
+          <p class="docs-p">
+            It runs <strong>100% in the browser</strong>. No server, no account, no payment ever needed.
+          </p>
+          <div class="callout">
+            <strong>Free forever</strong> — Vortex Solver uses Pollinations AI which has no usage limits or API keys. Your users will never hit a paywall.
+          </div>
+        </div>
+
+        <!-- ── Install ── -->
+        <div class="docs-section" id="install">
+          <h2 class="docs-h2">Installation</h2>
+          <p class="docs-p">Download <code>vortex-core.js</code> from GitHub and place it next to your HTML file.</p>
+
+          <div class="code-block">
+            <div class="code-block-header">
+              <span class="code-lang">html</span>
+              <button class="code-copy" onclick="copyCode(this)">copy</button>
+            </div>
+            <pre><span class="c-cm">&lt;!-- Step 1: Add the script tag --&gt;</span>
+<span class="c-kw">&lt;script</span> <span class="c-var">src</span>=<span class="c-str">"vortex-core.js"</span><span class="c-kw">&gt;&lt;/script&gt;</span>
+
+<span class="c-cm">&lt;!-- Step 2: Use it --&gt;</span>
+<span class="c-kw">&lt;script&gt;</span>
+  <span class="c-kw">const</span> <span class="c-var">vortex</span> = <span class="c-kw">new</span> <span class="c-fn">VortexSolver</span>();
+<span class="c-kw">&lt;/script&gt;</span></pre>
+          </div>
+
+          <p class="docs-p">Or clone the full repo which includes the solver + this frontend:</p>
+          <div class="code-block">
+            <div class="code-block-header">
+              <span class="code-lang">bash</span>
+              <button class="code-copy" onclick="copyCode(this)">copy</button>
+            </div>
+            <pre>git clone https://github.com/StuffzEZ/Vortex-Solver.git
+cd Vortex-Solver
+<span class="c-cm"># Open index.html in a browser — no build step needed</span></pre>
+          </div>
+        </div>
+
+        <!-- ── Quick Start ── -->
+        <div class="docs-section" id="quickstart">
+          <h2 class="docs-h2">Quick Start</h2>
+          <div class="code-block">
+            <div class="code-block-header">
+              <span class="code-lang">javascript</span>
+              <button class="code-copy" onclick="copyCode(this)">copy</button>
+            </div>
+            <pre><span class="c-kw">const</span> <span class="c-var">vortex</span> = <span class="c-kw">new</span> <span class="c-fn">VortexSolver</span>();
+
+<span class="c-cm">// Optional: track progress</span>
+<span class="c-var">vortex</span>.<span class="c-fn">onProgress</span> = (<span class="c-var">msg</span>, <span class="c-var">pct</span>) =&gt; {
+  console.<span class="c-fn">log</span>(<span class="c-str">`${pct}% — ${msg}`</span>);
+};
+
+<span class="c-cm">// Solve from text (auto-detects subject)</span>
+<span class="c-kw">const</span> <span class="c-var">result</span> = <span class="c-kw">await</span> <span class="c-var">vortex</span>.<span class="c-fn">solve</span>(<span class="c-str">"Solve 3x² − 5x + 2 = 0"</span>);
+console.<span class="c-fn">log</span>(<span class="c-var">result</span>.<span class="c-var">answer</span>);  <span class="c-cm">// "x = 1 or x = 2/3"</span>
+
+<span class="c-cm">// Solve with explicit template</span>
+<span class="c-kw">const</span> <span class="c-var">r2</span> = <span class="c-kw">await</span> <span class="c-var">vortex</span>.<span class="c-fn">solve</span>(<span class="c-str">"What caused WWI?"</span>, <span class="c-str">"history"</span>);
+
+<span class="c-cm">// Solve from image</span>
+<span class="c-kw">const</span> <span class="c-var">file</span> = document.<span class="c-fn">getElementById</span>(<span class="c-str">"upload"</span>).files[<span class="c-num">0</span>];
+<span class="c-kw">const</span> <span class="c-var">r3</span> = <span class="c-kw">await</span> <span class="c-var">vortex</span>.<span class="c-fn">solveFromImage</span>(<span class="c-var">file</span>, <span class="c-str">"math"</span>);
+
+<span class="c-cm">// Render result into a container</span>
+<span class="c-var">vortex</span>.<span class="c-fn">renderInto</span>(document.<span class="c-fn">getElementById</span>(<span class="c-str">"output"</span>), <span class="c-var">result</span>);</pre>
+          </div>
+        </div>
+
+        <!-- ── Methods ── -->
+        <div class="docs-section" id="methods">
+          <h2 class="docs-h2">Methods</h2>
+
+          <table class="method-table">
+            <thead>
+              <tr>
+                <th>Method</th>
+                <th>Arguments</th>
+                <th>Returns</th>
+                <th>Description</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>solve(text, templateId?)</code></td>
+                <td><code>string</code>, <code>string?</code></td>
+                <td><code>Promise&lt;Result&gt;</code></td>
+                <td>Solve a text problem. <code>templateId</code> defaults to <code>"auto"</code>.</td>
+              </tr>
+              <tr>
+                <td><code>solveFromImage(blob, templateId?)</code></td>
+                <td><code>File|Blob</code>, <code>string?</code></td>
+                <td><code>Promise&lt;Result&gt;</code></td>
+                <td>Runs Tesseract OCR on the image then solves.</td>
+              </tr>
+              <tr>
+                <td><code>renderInto(el, result)</code></td>
+                <td><code>HTMLElement</code>, <code>Result</code></td>
+                <td><code>void</code></td>
+                <td>Injects a styled solution card into <code>el</code>.</td>
+              </tr>
+              <tr>
+                <td><code>getTemplates()</code></td>
+                <td>—</td>
+                <td><code>Object</code></td>
+                <td>Returns the full template registry object.</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <p class="docs-p">
+            <strong>Properties:</strong> Set <code>vortex.onProgress</code> to a <code>(msg: string, pct: number) =&gt; void</code> callback before calling solve. <code>vortex.version</code> returns the semver string.
+          </p>
+        </div>
+
+        <!-- ── Result Object ── -->
+        <div class="docs-section" id="result">
+          <h2 class="docs-h2">Result Object</h2>
+          <p class="docs-p">Every solve method returns a <code>Promise</code> resolving to this shape:</p>
+          <div class="shape-box">
+<span class="shape-brace">{</span>
+  <span class="shape-key">input</span>:      <span class="shape-type">string</span>,   <span class="c-cm">// original text (post-OCR if image)</span>
+  <span class="shape-key">reasoning</span>: <span class="shape-type">string</span>,   <span class="c-cm">// full step-by-step explanation</span>
+  <span class="shape-key">answer</span>:    <span class="shape-type">string</span>,   <span class="c-cm">// concise final answer</span>
+  <span class="shape-key">template</span>:  <span class="shape-type">string</span>,   <span class="c-cm">// template id that was used</span>
+  <span class="shape-key">model</span>:     <span class="shape-type">string</span>,   <span class="c-cm">// AI model used (e.g. "openai")</span>
+  <span class="shape-key">durationMs</span>:<span class="shape-type">number</span>,   <span class="c-cm">// wall-clock solve time in ms</span>
+  <span class="shape-key">error</span>:     <span class="shape-type">string|null</span> <span class="c-cm">// null on success</span>
+<span class="shape-brace">}</span>
+          </div>
+          <div class="callout">
+            <strong>Error handling:</strong> The library never throws. On failure, <code>result.error</code> contains the message and <code>result.answer</code> will be an empty string. Always check <code>result.error !== null</code>.
+          </div>
+        </div>
+
+        <!-- ── Templates ── -->
+        <div class="docs-section" id="templates-ref">
+          <h2 class="docs-h2">Templates</h2>
+          <p class="docs-p">Each template provides an optimised system prompt tuned for that subject. Pass the template <code>id</code> as the second argument to <code>solve()</code> or <code>solveFromImage()</code>.</p>
+
+          <div class="tpl-docs-grid" id="docsTemplateGrid"></div>
+
+          <p class="docs-p" style="margin-top:16px;">Use <code>"auto"</code> to let the library classify the subject automatically via a fast pre-solve AI call. This adds ~1–2 seconds but works across mixed-subject inputs.</p>
+
+          <div class="code-block">
+            <div class="code-block-header">
+              <span class="code-lang">javascript</span>
+              <button class="code-copy" onclick="copyCode(this)">copy</button>
+            </div>
+            <pre><span class="c-cm">// List all available template ids at runtime</span>
+<span class="c-kw">const</span> <span class="c-var">tpls</span> = <span class="c-var">vortex</span>.<span class="c-fn">getTemplates</span>();
+Object.<span class="c-fn">keys</span>(<span class="c-var">tpls</span>); <span class="c-cm">// ["auto","math","science","code",...]</span>
+
+<span class="c-cm">// Access template metadata</span>
+<span class="c-var">tpls</span>.<span class="c-var">math</span>.<span class="c-var">label</span>;   <span class="c-cm">// "Mathematics"</span>
+<span class="c-var">tpls</span>.<span class="c-var">math</span>.<span class="c-var">icon</span>;    <span class="c-cm">// "∑"</span>
+<span class="c-var">tpls</span>.<span class="c-var">math</span>.<span class="c-var">color</span>;   <span class="c-cm">// "#34d399"</span>
+<span class="c-var">tpls</span>.<span class="c-var">math</span>.<span class="c-var">exampleProblems</span>; <span class="c-cm">// string[]</span></pre>
+          </div>
+        </div>
+
+        <!-- ── Progress ── -->
+        <div class="docs-section" id="progress">
+          <h2 class="docs-h2">Progress Events</h2>
+          <p class="docs-p">Set <code>vortex.onProgress</code> before calling solve to receive live stage updates.</p>
+          <div class="code-block">
+            <div class="code-block-header">
+              <span class="code-lang">javascript</span>
+              <button class="code-copy" onclick="copyCode(this)">copy</button>
+            </div>
+            <pre><span class="c-kw">const</span> <span class="c-var">vortex</span> = <span class="c-kw">new</span> <span class="c-fn">VortexSolver</span>();
+
+<span class="c-var">vortex</span>.<span class="c-var">onProgress</span> = (<span class="c-var">message</span>, <span class="c-var">percent</span>) =&gt; {
+  <span class="c-cm">// message: human-readable stage description</span>
+  <span class="c-cm">// percent: 0–100 number</span>
+  <span class="c-var">myProgressBar</span>.<span class="c-var">style</span>.<span class="c-var">width</span> = <span class="c-var">percent</span> + <span class="c-str">"%"</span>;
+  <span class="c-var">myStatusLabel</span>.<span class="c-var">textContent</span> = <span class="c-var">message</span>;
+};
+
+<span class="c-kw">await</span> <span class="c-var">vortex</span>.<span class="c-fn">solve</span>(<span class="c-str">"What is integration by parts?"</span>, <span class="c-str">"math"</span>);</pre>
+          </div>
+
+          <table class="method-table" style="margin-top:10px;">
+            <thead><tr><th>Stage</th><th>Approx %</th><th>Message</th></tr></thead>
+            <tbody>
+              <tr><td>Init</td><td>2–5%</td><td>Starting… / Starting OCR…</td></tr>
+              <tr><td>OCR</td><td>5–40%</td><td>Reading image… N%</td></tr>
+              <tr><td>Template detect</td><td>~42%</td><td>Detecting subject…</td></tr>
+              <tr><td>AI reasoning</td><td>55–88%</td><td>Solving with &lt;subject&gt; tutor…</td></tr>
+              <tr><td>Answer extract</td><td>90%</td><td>Extracting answer…</td></tr>
+              <tr><td>Done</td><td>100%</td><td>Done ✓</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- ── renderInto ── -->
+        <div class="docs-section" id="render">
+          <h2 class="docs-h2">renderInto()</h2>
+          <p class="docs-p">
+            <code>vortex.renderInto(container, result)</code> injects a self-contained, styled solution card into any DOM element. It injects its own CSS once via a <code>&lt;style&gt;</code> tag with id <code>__vortex_styles__</code> so it won't conflict with your page styles.
+          </p>
+          <div class="code-block">
+            <div class="code-block-header">
+              <span class="code-lang">html</span>
+              <button class="code-copy" onclick="copyCode(this)">copy</button>
+            </div>
+            <pre><span class="c-kw">&lt;div</span> <span class="c-var">id</span>=<span class="c-str">"output"</span><span class="c-kw">&gt;&lt;/div&gt;</span>
+
+<span class="c-kw">&lt;script&gt;</span>
+  <span class="c-kw">const</span> <span class="c-var">vortex</span> = <span class="c-kw">new</span> <span class="c-fn">VortexSolver</span>();
+  <span class="c-kw">const</span> <span class="c-var">result</span> = <span class="c-kw">await</span> <span class="c-var">vortex</span>.<span class="c-fn">solve</span>(<span class="c-str">"Explain Newton's 2nd law"</span>, <span class="c-str">"science"</span>);
+  <span class="c-var">vortex</span>.<span class="c-fn">renderInto</span>(document.<span class="c-fn">getElementById</span>(<span class="c-str">"output"</span>), <span class="c-var">result</span>);
+<span class="c-kw">&lt;/script&gt;</span></pre>
+          </div>
+          <p class="docs-p">The card displays: template badge, final answer prominently, and the full reasoning in a scrollable mono box.</p>
+        </div>
+
+        <!-- ── Full Examples ── -->
+        <div class="docs-section" id="examples-full">
+          <h2 class="docs-h2">Full Examples</h2>
+
+          <p class="docs-p"><strong>Minimal page with a text input:</strong></p>
+          <div class="code-block">
+            <div class="code-block-header">
+              <span class="code-lang">html</span>
+              <button class="code-copy" onclick="copyCode(this)">copy</button>
+            </div>
+            <pre><span class="c-kw">&lt;!DOCTYPE html&gt;</span>
+<span class="c-kw">&lt;html&gt;</span>
+<span class="c-kw">&lt;head&gt;&lt;script</span> <span class="c-var">src</span>=<span class="c-str">"vortex-core.js"</span><span class="c-kw">&gt;&lt;/script&gt;&lt;/head&gt;</span>
+<span class="c-kw">&lt;body&gt;</span>
+  <span class="c-kw">&lt;textarea</span> <span class="c-var">id</span>=<span class="c-str">"q"</span> <span class="c-var">placeholder</span>=<span class="c-str">"Ask anything…"</span><span class="c-kw">&gt;&lt;/textarea&gt;</span>
+  <span class="c-kw">&lt;button</span> <span class="c-var">id</span>=<span class="c-str">"go"</span><span class="c-kw">&gt;</span>Solve<span class="c-kw">&lt;/button&gt;</span>
+  <span class="c-kw">&lt;div</span> <span class="c-var">id</span>=<span class="c-str">"out"</span><span class="c-kw">&gt;&lt;/div&gt;</span>
+
+  <span class="c-kw">&lt;script&gt;</span>
+    <span class="c-kw">const</span> <span class="c-var">v</span> = <span class="c-kw">new</span> <span class="c-fn">VortexSolver</span>();
+    <span class="c-kw">const</span> <span class="c-var">out</span> = document.<span class="c-fn">getElementById</span>(<span class="c-str">"out"</span>);
+
+    document.<span class="c-fn">getElementById</span>(<span class="c-str">"go"</span>).<span class="c-fn">addEventListener</span>(<span class="c-str">"click"</span>, <span class="c-kw">async</span> () =&gt; {
+      <span class="c-kw">const</span> <span class="c-var">q</span> = document.<span class="c-fn">getElementById</span>(<span class="c-str">"q"</span>).<span class="c-var">value</span>;
+      <span class="c-kw">const</span> <span class="c-var">result</span> = <span class="c-kw">await</span> <span class="c-var">v</span>.<span class="c-fn">solve</span>(<span class="c-var">q</span>);
+      <span class="c-var">v</span>.<span class="c-fn">renderInto</span>(<span class="c-var">out</span>, <span class="c-var">result</span>);
+    });
+  <span class="c-kw">&lt;/script&gt;</span>
+<span class="c-kw">&lt;/body&gt;</span>
+<span class="c-kw">&lt;/html&gt;</span></pre>
+          </div>
+
+          <p class="docs-p"><strong>Image upload with template selection:</strong></p>
+          <div class="code-block">
+            <div class="code-block-header">
+              <span class="code-lang">javascript</span>
+              <button class="code-copy" onclick="copyCode(this)">copy</button>
+            </div>
+            <pre><span class="c-kw">const</span> <span class="c-var">v</span> = <span class="c-kw">new</span> <span class="c-fn">VortexSolver</span>();
+<span class="c-var">v</span>.<span class="c-var">onProgress</span> = (<span class="c-var">msg</span>, <span class="c-var">pct</span>) =&gt; updateUI(<span class="c-var">msg</span>, <span class="c-var">pct</span>);
+
+<span class="c-kw">const</span> <span class="c-var">file</span> = document.<span class="c-fn">getElementById</span>(<span class="c-str">"photo"</span>).files[<span class="c-num">0</span>];
+<span class="c-kw">const</span> <span class="c-var">result</span> = <span class="c-kw">await</span> <span class="c-var">v</span>.<span class="c-fn">solveFromImage</span>(<span class="c-var">file</span>, <span class="c-str">"science"</span>);
+
+<span class="c-kw">if</span> (<span class="c-var">result</span>.<span class="c-var">error</span>) {
+  console.<span class="c-fn">error</span>(<span class="c-str">"Solve failed:"</span>, <span class="c-var">result</span>.<span class="c-var">error</span>);
+} <span class="c-kw">else</span> {
+  console.<span class="c-fn">log</span>(<span class="c-str">"Answer:"</span>, <span class="c-var">result</span>.<span class="c-var">answer</span>);
+  console.<span class="c-fn">log</span>(<span class="c-str">"Steps:"</span>,  <span class="c-var">result</span>.<span class="c-var">reasoning</span>);
+}</pre>
+          </div>
+        </div>
+
+        <!-- ── Implementation Guide ── -->
+        <div class="docs-section" id="implementation">
+          <h2 class="docs-h2">Implementation Guide <span class="docs-tag">Tutorial</span></h2>
+
+          <p class="docs-p">Follow these steps to embed Vortex Solver into any existing website or web app in under 5 minutes.</p>
+
+          <p class="docs-p"><strong>Step 1 — Download the library</strong></p>
+          <div class="code-block">
+            <div class="code-block-header"><span class="code-lang">bash</span><button class="code-copy" onclick="copyCode(this)">copy</button></div>
+            <pre><span class="c-cm"># Option A: clone the repo</span>
+git clone https://github.com/StuffzEZ/Vortex-Solver.git
+
+<span class="c-cm"># Option B: download just the core library</span>
+curl -O https://raw.githubusercontent.com/StuffzEZ/Vortex-Solver/main/vortex-core.js</pre>
+          </div>
+
+          <p class="docs-p"><strong>Step 2 — Add to your HTML</strong></p>
+          <p class="docs-p">Add the script before your closing <code>&lt;/body&gt;</code> tag (or in <code>&lt;head&gt;</code> with <code>defer</code>):</p>
+          <div class="code-block">
+            <div class="code-block-header"><span class="code-lang">html</span><button class="code-copy" onclick="copyCode(this)">copy</button></div>
+            <pre><span class="c-kw">&lt;script</span> <span class="c-var">src</span>=<span class="c-str">"vortex-core.js"</span> <span class="c-var">defer</span><span class="c-kw">&gt;&lt;/script&gt;</span></pre>
+          </div>
+
+          <p class="docs-p"><strong>Step 3 — Instantiate and wire up your UI</strong></p>
+          <div class="code-block">
+            <div class="code-block-header"><span class="code-lang">javascript</span><button class="code-copy" onclick="copyCode(this)">copy</button></div>
+            <pre><span class="c-kw">const</span> <span class="c-var">vortex</span> = <span class="c-kw">new</span> <span class="c-fn">VortexSolver</span>();
+
+<span class="c-cm">// Show a spinner or progress bar as it works</span>
+<span class="c-var">vortex</span>.<span class="c-var">onProgress</span> = (<span class="c-var">msg</span>, <span class="c-var">pct</span>) =&gt; {
+  <span class="c-var">progressBar</span>.<span class="c-var">style</span>.<span class="c-var">width</span> = <span class="c-var">pct</span> + <span class="c-str">"%"</span>;
+  <span class="c-var">statusEl</span>.<span class="c-var">textContent</span> = <span class="c-var">msg</span>;
+};
+
+<span class="c-cm">// Call solve() and use the result however you like</span>
+<span class="c-kw">async function</span> <span class="c-fn">onSubmit</span>() {
+  <span class="c-kw">const</span> <span class="c-var">question</span> = <span class="c-var">myInput</span>.<span class="c-var">value</span>;
+  <span class="c-kw">const</span> <span class="c-var">template</span> = <span class="c-var">mySelect</span>.<span class="c-var">value</span>;   <span class="c-cm">// e.g. "math", "science"</span>
+
+  <span class="c-kw">const</span> <span class="c-var">result</span> = <span class="c-kw">await</span> <span class="c-var">vortex</span>.<span class="c-fn">solve</span>(<span class="c-var">question</span>, <span class="c-var">template</span>);
+
+  <span class="c-kw">if</span> (<span class="c-var">result</span>.<span class="c-var">error</span>) {
+    <span class="c-var">errorEl</span>.<span class="c-var">textContent</span> = <span class="c-var">result</span>.<span class="c-var">error</span>;
+    <span class="c-kw">return</span>;
+  }
+
+  <span class="c-cm">// Option A: render the built-in card</span>
+  <span class="c-var">vortex</span>.<span class="c-fn">renderInto</span>(<span class="c-var">outputDiv</span>, <span class="c-var">result</span>);
+
+  <span class="c-cm">// Option B: use the data yourself</span>
+  <span class="c-var">answerEl</span>.<span class="c-var">textContent</span>    = <span class="c-var">result</span>.<span class="c-var">answer</span>;
+  <span class="c-var">reasoningEl</span>.<span class="c-var">textContent</span> = <span class="c-var">result</span>.<span class="c-var">reasoning</span>;
+}</pre>
+          </div>
+
+          <p class="docs-p"><strong>Step 4 — (Optional) Build a template picker</strong></p>
+          <div class="code-block">
+            <div class="code-block-header"><span class="code-lang">javascript</span><button class="code-copy" onclick="copyCode(this)">copy</button></div>
+            <pre><span class="c-kw">const</span> <span class="c-var">templates</span> = <span class="c-var">vortex</span>.<span class="c-fn">getTemplates</span>();
+<span class="c-kw">const</span> <span class="c-var">select</span> = document.<span class="c-fn">getElementById</span>(<span class="c-str">"tplSelect"</span>);
+
+Object.<span class="c-fn">values</span>(<span class="c-var">templates</span>).<span class="c-fn">forEach</span>(<span class="c-var">tpl</span> =&gt; {
+  <span class="c-kw">const</span> <span class="c-var">opt</span> = document.<span class="c-fn">createElement</span>(<span class="c-str">"option"</span>);
+  <span class="c-var">opt</span>.<span class="c-var">value</span>       = <span class="c-var">tpl</span>.<span class="c-var">id</span>;
+  <span class="c-var">opt</span>.<span class="c-var">textContent</span> = <span class="c-var">tpl</span>.<span class="c-var">icon</span> + <span class="c-str">" "</span> + <span class="c-var">tpl</span>.<span class="c-var">label</span>;
+  <span class="c-var">select</span>.<span class="c-fn">appendChild</span>(<span class="c-var">opt</span>);
+});</pre>
+          </div>
+
+          <div class="callout">
+            <strong>Tip:</strong> The library is fully synchronous to set up — only the <code>solve()</code> calls are async. You can safely call <code>new VortexSolver()</code> at page load.
+          </div>
+        </div>
+
+        <!-- ── Limitations ── -->
+        <div class="docs-section" id="limits">
+          <h2 class="docs-h2">Limitations & Notes</h2>
+          <p class="docs-p">
+            <strong>OCR accuracy:</strong> Tesseract works best with clear, high-contrast, typed text. Handwriting and complex diagrams (graphs, geometric figures) may not extract correctly. For handwritten maths, consider prompting the user to type the problem instead.
+          </p>
+          <p class="docs-p">
+            <strong>AI hallucination:</strong> Pollinations AI (and all LLMs) can make reasoning errors on complex or ambiguous problems. The <code>"Retry"</code> feature re-runs the solve with an explicit "double-check" instruction which often improves accuracy.
+          </p>
+          <p class="docs-p">
+            <strong>Rate limits:</strong> Pollinations AI has no hard rate limits for typical use but may slow on high traffic. The library automatically retries 3 times per model and falls back across 3 models.
+          </p>
+          <p class="docs-p">
+            <strong>Network:</strong> Requires internet access to reach Pollinations AI. An offline mode is not currently supported.
+          </p>
+        </div>
+
+      </div><!-- /docs-body -->
+    </div><!-- /docs-wrap -->
+  </div><!-- /docs section -->
+
+  <!-- Toast -->
+  <div id="toast"></div>
+
+<!-- ══════════ GLOBAL HELPERS (must be defined before any onclick fires) ══════════ -->
+<script>
+  function showSection(id) {
+    document.querySelectorAll(".section").forEach(s =>
+      s.classList.toggle("active", s.id === "sec-" + id)
+    );
+    document.querySelectorAll(".nav-link").forEach(l => {
+      const oc = l.getAttribute("onclick") || "";
+      l.classList.toggle("active", oc.includes("'" + id + "'"));
+    });
+  }
+
+  function scrollToDoc(hash) {
+    const el = document.querySelector(hash);
+    if (el) el.scrollIntoView({ behavior: "smooth" });
+    document.querySelectorAll(".docs-nav-link").forEach(l => {
+      const oc = l.getAttribute("onclick") || "";
+      l.classList.toggle("here", oc.includes("'" + hash + "'"));
+    });
+  }
+
+  window.copyCode = function(btn) {
+    const pre = btn.closest(".code-block").querySelector("pre");
+    navigator.clipboard.writeText(pre.innerText).then(() => {
+      btn.textContent = "copied ✓";
+      setTimeout(() => btn.textContent = "copy", 1600);
+    });
+  };
+</script>
+
+<!-- ══════════ MAIN SCRIPT ══════════ -->
+<script>
+(function () {
+  "use strict";
+
+  /* ── INIT SOLVER ─────────────────────── */
+  let vortex;
+  try {
+    vortex = new VortexSolver();
+  } catch (e) {
+    console.error("[Vortex UI] VortexSolver failed to init:", e);
+    document.body.insertAdjacentHTML("afterbegin",
+      '<div style="position:fixed;top:0;left:0;right:0;z-index:9999;background:#450a0a;color:#fca5a5;' +
+      'padding:12px 20px;font-family:monospace;font-size:.85rem;">' +
+      '⚠️ vortex-core.js failed to load — make sure it is in the same folder as index.html. (' + e.message + ')</div>'
+    );
+  }
+
+  let lastResult  = null;
+  let currentFile = null;
+  let isSolving   = false;
+  let activeInputTab = "text";
+  let selectedTemplate = "auto";
+  const history = JSON.parse(localStorage.getItem("vx_history") || "[]");
+
+  if (vortex) vortex.onProgress = (msg, pct) => setProgress(msg, pct);
+
+  /* ── DOM REFS ────────────────────────── */
+  const $ = id => document.getElementById(id);
+  const solveBtn  = $("solveBtn");
+  const retryBtn  = $("retryBtn");
+  const clearBtn  = $("clearBtn");
+  const textInput = $("textInput");
+  const imgInput  = $("imgInput");
+  const dropZone  = $("dropZone");
+  const filePill  = $("filePill");
+  const prevImg   = $("previewImg");
+  const fileNameEl= $("fileName");
+  const progCard  = $("progCard");
+  const progMsg   = $("progMsg");
+  const progPct   = $("progPct");
+  const progFill  = $("progFill");
+  const progLog   = $("progLog");
+  const resultZone= $("resultZone");
+  const resultContent = $("resultContent");
+  const charCount = $("charCount");
+  const tplGrid   = $("tplGrid");
+  const examplesRow = $("examplesRow");
+  const histWrap  = $("histWrap");
+  const histList  = $("histList");
+  const clearHistBtn = $("clearHistBtn");
+
+  /* ── BUILD TEMPLATE GRID ─────────────── */
+  const TEMPLATES = vortex ? vortex.getTemplates() : {};
+
+  function buildTemplateGrid() {
+    tplGrid.innerHTML = "";
+    Object.values(TEMPLATES).forEach(tpl => {
+      const btn = document.createElement("button");
+      btn.className = "tpl-btn" + (tpl.id === selectedTemplate ? " selected" : "");
+      btn.style.setProperty("--tpl-color", tpl.color);
+      btn.dataset.id = tpl.id;
+      btn.innerHTML = `
+        <span class="tpl-icon">${tpl.icon}</span>
+        <span class="tpl-name">${tpl.label}</span>
+        <span class="tpl-example-hint">${tpl.exampleProblems.length ? tpl.exampleProblems.length + " examples" : "smart detect"}</span>
+      `;
+      btn.addEventListener("click", () => selectTemplate(tpl.id));
+      tplGrid.appendChild(btn);
+    });
+  }
+
+  function selectTemplate(id) {
+    selectedTemplate = id;
+    document.querySelectorAll(".tpl-btn").forEach(b => {
+      b.classList.toggle("selected", b.dataset.id === id);
+    });
+    updateExamples();
+    console.log("[UI] Template selected:", id);
+  }
+
+  function updateExamples() {
+    const tpl = TEMPLATES[selectedTemplate] || TEMPLATES["auto"];
+    examplesRow.innerHTML = "";
+    (tpl.exampleProblems || []).slice(0, 3).forEach(ex => {
+      const chip = document.createElement("button");
+      chip.className = "example-chip";
+      chip.textContent = ex.length > 42 ? ex.slice(0, 42) + "…" : ex;
+      chip.addEventListener("click", () => {
+        textInput.value = ex;
+        charCount.textContent = ex.length;
+        // switch to text tab if on image
+        document.querySelector('.itab[data-tab="text"]').click();
+      });
+      examplesRow.appendChild(chip);
+    });
+  }
+
+  /* ── BUILD DOCS TEMPLATE GRID ────────── */
+  function buildDocsTemplateGrid() {
+    const grid = $("docsTemplateGrid");
+    if (!grid) return;
+    Object.values(TEMPLATES).forEach(tpl => {
+      const card = document.createElement("div");
+      card.className = "tpl-doc-card";
+      card.innerHTML = `
+        <div class="tpl-doc-top">
+          <span class="tpl-doc-icon" style="color:${tpl.color}">${tpl.icon}</span>
+          <span class="tpl-doc-name">${tpl.label}</span>
+          <span class="tpl-doc-id" style="background:${tpl.color}22;color:${tpl.color}">${tpl.id}</span>
+        </div>
+        <div class="tpl-doc-ex">${(tpl.exampleProblems[0] || "Auto-detect").slice(0,70)}</div>
+      `;
+      grid.appendChild(card);
+    });
+  }
+
+  buildTemplateGrid();
+  updateExamples();
+  buildDocsTemplateGrid();
+
+  /* ── INPUT TABS ──────────────────────── */
+  document.querySelectorAll(".itab").forEach(btn => {
+    btn.addEventListener("click", () => {
+      activeInputTab = btn.dataset.tab;
+      document.querySelectorAll(".itab").forEach(b => b.classList.toggle("active", b === btn));
+      document.querySelectorAll(".itab-content").forEach(c => {
+        c.classList.toggle("active", c.id === "itab-" + activeInputTab);
+      });
+    });
+  });
+
+  /* ── IMAGE INPUT ─────────────────────── */
+  imgInput.addEventListener("change", () => handleFile(imgInput.files[0]));
+  dropZone.addEventListener("dragover", e => { e.preventDefault(); dropZone.classList.add("over"); });
+  dropZone.addEventListener("dragleave", () => dropZone.classList.remove("over"));
+  dropZone.addEventListener("drop", e => {
+    e.preventDefault();
+    dropZone.classList.remove("over");
+    if (e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]);
+  });
+
+  function handleFile(f) {
+    currentFile = f;
+    fileNameEl.textContent = f.name;
+    prevImg.src = URL.createObjectURL(f);
+    filePill.classList.add("shown");
+    console.log("[UI] File selected:", f.name, f.type, f.size + "b");
+  }
+
+  /* ── TEXT INPUT ──────────────────────── */
+  textInput.addEventListener("input", () => { charCount.textContent = textInput.value.length; });
+
+  /* ── SOLVE ───────────────────────────── */
+  solveBtn.addEventListener("click", startSolve);
+  retryBtn.addEventListener("click", startRetry);
+  clearBtn.addEventListener("click", clearAll);
+  clearHistBtn.addEventListener("click", clearHistory);
+
+  async function startSolve() {
+    if (isSolving) return;
+
+    if (activeInputTab === "image" && !currentFile) {
+      showToast("Upload an image first ✕"); return;
+    }
+    if (activeInputTab === "text" && !textInput.value.trim()) {
+      showToast("Type a problem first ✕"); return;
+    }
+
+    console.log("[UI] Solve start — tab:", activeInputTab, "template:", selectedTemplate);
+    isSolving = true;
+    setSolving(true);
+    showProgress(true);
+    hideResult();
+
+    let result;
+    try {
+      if (!vortex) throw new Error("vortex-core.js is not loaded. Place vortex-core.js in the same folder as index.html.");
+      if (activeInputTab === "image") {
+        result = await vortex.solveFromImage(currentFile, selectedTemplate);
+      } else {
+        result = await vortex.solve(textInput.value.trim(), selectedTemplate);
+      }
+    } catch (e) {
+      console.error("[UI] Unexpected error:", e);
+      result = { input: "", reasoning: "", answer: "", template: selectedTemplate, model: "—", durationMs: 0, error: e.message };
+    }
+
+    lastResult = result;
+    console.log("[UI] Result:", result);
+    showProgress(false);
+    renderResult(result);
+    setSolving(false);
+    isSolving = false;
+
+    if (!result.error && result.answer) saveToHistory(result);
+  }
+
+  async function startRetry() {
+    if (!lastResult || isSolving) return;
+    console.log("[UI] Retry triggered");
+    isSolving = true;
+    setSolving(true);
+    showProgress(true);
+    hideResult();
+
+    const result = await (vortex
+      ? vortex.solve(
+          lastResult.input + "\n\nIMPORTANT: Please double-check your previous answer carefully and provide a fresh, verified solution.",
+          lastResult.template
+        )
+      : Promise.resolve({ input: lastResult.input, reasoning: "", answer: "", template: lastResult.template, model: "—", durationMs: 0, error: "vortex-core.js not loaded" }));
+
+    lastResult = result;
+    showProgress(false);
+    renderResult(result);
+    setSolving(false);
+    isSolving = false;
+    if (!result.error && result.answer) saveToHistory(result);
+  }
+
+  function clearAll() {
+    currentFile = null;
+    imgInput.value = "";
+    textInput.value = "";
+    charCount.textContent = "0";
+    filePill.classList.remove("shown");
+    prevImg.src = "";
+    fileNameEl.textContent = "—";
+    lastResult = null;
+    hideResult();
+    showProgress(false);
+    retryBtn.disabled = true;
+    console.log("[UI] Cleared");
+  }
+
+  /* ── PROGRESS ────────────────────────── */
+  function setProgress(msg, pct) {
+    progMsg.textContent = msg;
+    progPct.textContent = Math.round(pct) + "%";
+    progFill.style.width = Math.round(pct) + "%";
+    const line = document.createElement("div");
+    line.className = "prog-log-line";
+    line.textContent = "[" + new Date().toLocaleTimeString() + "] " + msg;
+    progLog.appendChild(line);
+    progLog.scrollTop = progLog.scrollHeight;
+  }
+
+  function showProgress(on) {
+    progCard.classList.toggle("on", on);
+    if (on) { progLog.innerHTML = ""; progFill.style.width = "0%"; }
+  }
+
+  /* ── RENDER RESULT ───────────────────── */
+  function renderResult(result) {
+    resultZone.classList.add("on");
+
+    if (result.error) {
+      resultContent.innerHTML = `<div class="err-box"><strong style="display:block;margin-bottom:6px;">⚠️ Something went wrong</strong>${esc(result.error)}</div>`;
+      retryBtn.disabled = true;
+      return;
+    }
+
+    const tpl = TEMPLATES[result.template] || TEMPLATES["auto"];
+    const stepsHtml = formatSteps(result.reasoning);
+
+    resultContent.innerHTML = `
+      <div class="problem-pill"><strong>Problem</strong>${esc(result.input)}</div>
+
+      <div class="answer-banner">
+        <span class="answer-icon">${tpl.icon}</span>
+        <div style="flex:1;">
+          <div class="answer-label">${esc(tpl.answerLabel)}</div>
+          <div class="answer-value" id="_ansVal">${esc(result.answer || "—")}</div>
+        </div>
+        <button class="copy-ans" id="_copyAns">Copy</button>
+      </div>
+
+      <div class="steps-wrap">
+        <div class="steps-bar">
+          <span class="steps-bar-label">Step-by-step reasoning</span>
+          <button class="steps-toggle" id="_stepsToggle">▼ Collapse</button>
+        </div>
+        <div class="steps-body" id="_stepsBody">${stepsHtml}</div>
+      </div>
+
+      <div class="result-meta">
+        <span class="meta-pill">⏱ ${result.durationMs}ms</span>
+        <span class="meta-pill" style="color:${tpl.color}">${tpl.icon} ${esc(tpl.label)}</span>
+        <span class="meta-pill">🤖 ${esc(result.model)}</span>
+        <span class="meta-pill">📝 ${result.input.length}c input</span>
+      </div>
+    `;
+
+    $("_copyAns").addEventListener("click", () => {
+      navigator.clipboard.writeText(result.answer || "").then(() => showToast("Answer copied ✓"));
+    });
+
+    const toggle = $("_stepsToggle");
+    const body   = $("_stepsBody");
+    toggle.addEventListener("click", () => {
+      const col = body.classList.toggle("collapsed");
+      toggle.textContent = col ? "▶ Expand" : "▼ Collapse";
+    });
+
+    retryBtn.disabled = false;
+    console.log("[UI] Result rendered — answer:", result.answer);
+  }
+
+  function hideResult() {
+    resultZone.classList.remove("on");
+    resultContent.innerHTML = "";
+  }
+
+  function setSolving(on) {
+    solveBtn.disabled = on;
+    solveBtn.textContent = on ? "⏳ Solving…" : "⚡ Solve";
+    retryBtn.disabled = on;
+  }
+
+  /* ── FORMAT STEPS ────────────────────── */
+  function formatSteps(text) {
+    if (!text) return "";
+    return esc(text)
+      .replace(/(Step\s*\d+[:.)]|^\d+[:.)])/gm, '<span class="step-n">$1</span>')
+      .replace(/(FINAL ANSWER[:\s]+.+)/gi, '<span class="final-ans-line">$1</span>');
+  }
+
+  /* ── HISTORY ─────────────────────────── */
+  function saveToHistory(result) {
+    history.unshift({
+      answer: result.answer,
+      input: result.input.slice(0, 120),
+      template: result.template,
+      ts: Date.now(),
+    });
+    if (history.length > 30) history.pop();
+    localStorage.setItem("vx_history", JSON.stringify(history));
+    renderHistory();
+  }
+
+  function renderHistory() {
+    if (!history.length) { histWrap.style.display = "none"; return; }
+    histWrap.style.display = "block";
+    histList.innerHTML = history.slice(0, 8).map((h, i) => {
+      const tpl = TEMPLATES[h.template] || TEMPLATES["auto"];
+      return `
+        <div class="hist-item" data-i="${i}">
+          <span class="hist-badge" style="background:${tpl.color}22;color:${tpl.color}">${tpl.icon}</span>
+          <span class="hist-ans">${esc(h.answer)}</span>
+          <span class="hist-q">${esc(h.input)}</span>
+          <span class="hist-t">${timeAgo(h.ts)}</span>
+        </div>
+      `;
+    }).join("");
+
+    histList.querySelectorAll(".hist-item").forEach(el => {
+      el.addEventListener("click", () => {
+        const h = history[+el.dataset.i];
+        textInput.value = h.input;
+        charCount.textContent = h.input.length;
+        selectTemplate(h.template);
+        document.querySelector('.itab[data-tab="text"]').click();
+        showToast("Loaded — press ⚡ Solve");
+      });
+    });
+  }
+
+  function clearHistory() {
+    history.length = 0;
+    localStorage.removeItem("vx_history");
+    renderHistory();
+    showToast("History cleared");
+  }
+
+  renderHistory();
+
+  /* ── UTILS ───────────────────────────── */
+  function esc(s) {
+    return String(s || "")
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  }
+
+  function timeAgo(ts) {
+    const s = Math.round((Date.now() - ts) / 1000);
+    if (s < 60)    return "just now";
+    if (s < 3600)  return Math.round(s / 60) + "m ago";
+    if (s < 86400) return Math.round(s / 3600) + "h ago";
+    return Math.round(s / 86400) + "d ago";
+  }
+
+  const toastEl = $("toast");
+  let toastTimer;
+  function showToast(msg) {
+    toastEl.textContent = msg;
+    toastEl.classList.add("show");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => toastEl.classList.remove("show"), 2400);
+  }
+
+  console.log("[Vortex Solver UI] Ready — VortexSolver v" + (vortex ? vortex.version : "NOT LOADED"));
+})();
+</script>
+</body>
+</html>
