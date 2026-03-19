@@ -9,6 +9,9 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
   <link rel="icon" type="image/x-icon" href="logo.png">
   <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,300;12..96,400;12..96,600;12..96,800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet"/>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css"/>
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
 
   <style>
     /* ═══════════════════════════════
@@ -662,10 +665,8 @@
     .steps-body {
       padding: 18px 20px;
       font-size: .86rem;
-      line-height: 1.88;
-      white-space: pre-wrap;
+      line-height: 1.78;
       color: #c5d0de;
-      font-family: var(--mono);
       max-height: 520px;
       overflow-y: auto;
       transition: max-height .3s ease, padding .3s;
@@ -676,6 +677,54 @@
     .steps-body::-webkit-scrollbar { width: 4px; }
     .steps-body::-webkit-scrollbar-track { background: transparent; }
     .steps-body::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+
+    /* Markdown styling inside reasoning */
+    .steps-body > :first-child { margin-top: 0 !important; }
+    .steps-body > :last-child { margin-bottom: 0 !important; }
+    .steps-body p { margin: 0 0 11px; color: #cbd6e2; }
+    .steps-body strong { color: #eef5ff; }
+    .steps-body em { color: #dde8f8; }
+    .steps-body h1, .steps-body h2, .steps-body h3, .steps-body h4 {
+      margin: 18px 0 10px;
+      line-height: 1.4;
+      color: #edf4ff;
+      letter-spacing: -.01em;
+    }
+    .steps-body h1 { font-size: 1.15rem; }
+    .steps-body h2 { font-size: 1.06rem; }
+    .steps-body h3, .steps-body h4 { font-size: .98rem; }
+    .steps-body ul, .steps-body ol { margin: 10px 0 12px 20px; }
+    .steps-body li { margin: 5px 0; }
+    .steps-body hr {
+      border: none;
+      border-top: 1px solid var(--border2);
+      margin: 16px 0;
+    }
+    .steps-body blockquote {
+      margin: 10px 0 12px;
+      padding: 9px 12px;
+      border-left: 3px solid var(--accent-b);
+      background: rgba(56, 189, 248, .08);
+      border-radius: 7px;
+    }
+    .steps-body code {
+      font-family: var(--mono);
+      font-size: .82em;
+    }
+    .steps-body pre {
+      margin: 12px 0;
+      background: #0b111d;
+      border: 1px solid var(--border);
+      border-radius: 9px;
+      padding: 11px 12px;
+      overflow-x: auto;
+      font-family: var(--mono);
+      font-size: .8rem;
+      line-height: 1.65;
+      color: #d2dded;
+    }
+    .steps-body .katex-display { margin: .85em 0; overflow-x: auto; overflow-y: hidden; }
+    .steps-body .katex { font-size: 1.02em; }
 
     /* Highlight step numbers in reasoning */
     .step-n { color: var(--accent-o); font-weight: 700; }
@@ -1844,7 +1893,8 @@ Object.<span class="c-fn">values</span>(<span class="c-var">templates</span>).<s
     }
 
     const tpl = TEMPLATES[result.template] || TEMPLATES["auto"];
-    const stepsHtml = formatSteps(result.reasoning);
+    const normalizedReasoning = normalizeReasoning(result.reasoning);
+    const stepsHtml = formatSteps(normalizedReasoning);
 
     resultContent.innerHTML = `
       <div class="problem-pill"><strong>Problem</strong>${esc(result.input)}</div>
@@ -1880,6 +1930,7 @@ Object.<span class="c-fn">values</span>(<span class="c-var">templates</span>).<s
 
     const toggle = $("_stepsToggle");
     const body   = $("_stepsBody");
+    renderMath(body);
     toggle.addEventListener("click", () => {
       const col = body.classList.toggle("collapsed");
       toggle.textContent = col ? "▶ Expand" : "▼ Collapse";
@@ -1902,10 +1953,96 @@ Object.<span class="c-fn">values</span>(<span class="c-var">templates</span>).<s
 
   /* ── FORMAT STEPS ────────────────────── */
   function formatSteps(text) {
-    if (!text) return "";
-    return esc(text)
+    if (!text) return "<p>No reasoning was returned.</p>";
+
+    let content = String(text).replace(/\r\n/g, "\n").trim();
+
+    // fenced code blocks (extract before inline markdown parsing)
+    const codeBlocks = [];
+    content = content.replace(/```([\w-]*)\n([\s\S]*?)```/g, (_, lang, code) => {
+      const token = `__CODEBLOCK_${codeBlocks.length}__`;
+      codeBlocks.push(`<pre><code data-lang="${esc(lang || "")}">${esc(code.trim())}</code></pre>`);
+      return token;
+    });
+
+    let html = esc(content)
+      .replace(/^---$/gm, "<hr>")
+      .replace(/^####\s+(.+)$/gm, "<h4>$1</h4>")
+      .replace(/^###\s+(.+)$/gm, "<h3>$1</h3>")
+      .replace(/^##\s+(.+)$/gm, "<h2>$1</h2>")
+      .replace(/^#\s+(.+)$/gm, "<h1>$1</h1>");
+
+    html = html
+      .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+      .replace(/\*(.+?)\*/g, "<em>$1</em>")
+      .replace(/`([^`]+)`/g, "<code>$1</code>");
+
+    html = html.replace(/(?:^|\n)((?:\s*[-*]\s+.+(?:\n|$))+)/g, (m, block) => {
+      const items = block.trim().split("\n").map(line =>
+        `<li>${line.replace(/^\s*[-*]\s+/, "").trim()}</li>`
+      ).join("");
+      return `\n<ul>${items}</ul>\n`;
+    });
+    html = html.replace(/(?:^|\n)((?:\s*\d+\.\s+.+(?:\n|$))+)/g, (m, block) => {
+      const items = block.trim().split("\n").map(line =>
+        `<li>${line.replace(/^\s*\d+\.\s+/, "").trim()}</li>`
+      ).join("");
+      return `\n<ol>${items}</ol>\n`;
+    });
+
+    html = html
+      .replace(/(^|\n)&gt;\s?(.*)/g, "$1<blockquote>$2</blockquote>")
+      .replace(/\n{2,}/g, "</p><p>")
+      .replace(/\n/g, "<br>");
+    html = `<p>${html}</p>`;
+
+    html = html
+      .replace(/<p>\s*(<\/?(?:h[1-4]|ul|ol|li|pre|blockquote|hr)[^>]*>)\s*<\/p>/g, "$1")
+      .replace(/<\/(ul|ol)><br><(ul|ol)>/g, "</$1><$2>")
+      .replace(/<br><\/(ul|ol)>/g, "</$1>")
+      .replace(/<hr><br>/g, "<hr>")
+      .replace(/<blockquote>(.*?)<\/blockquote>/g, (_, q) => `<blockquote>${q.replace(/<br>/g, " ")}</blockquote>`);
+
+    codeBlocks.forEach((block, i) => {
+      html = html.replace(`__CODEBLOCK_${i}__`, block);
+    });
+
+    return html
       .replace(/(Step\s*\d+[:.)]|^\d+[:.)])/gm, '<span class="step-n">$1</span>')
       .replace(/(FINAL ANSWER[:\s]+.+)/gi, '<span class="final-ans-line">$1</span>');
+  }
+
+  function normalizeReasoning(rawReasoning) {
+    if (!rawReasoning) return "";
+    const txt = String(rawReasoning).trim();
+
+    // Some image solves leak JSON blobs; extract readable fields.
+    if ((txt.startsWith("{") || txt.startsWith("[")) && /reasoning_content|content|role/.test(txt)) {
+      try {
+        const parsed = JSON.parse(txt);
+        if (Array.isArray(parsed)) {
+          const segments = parsed.map(item => item.reasoning_content || item.content || "").filter(Boolean);
+          if (segments.length) return segments.join("\n\n");
+        } else if (parsed && typeof parsed === "object") {
+          if (parsed.reasoning_content) return parsed.reasoning_content;
+          if (parsed.content) return parsed.content;
+        }
+      } catch (_) {}
+    }
+    return txt;
+  }
+
+  function renderMath(container) {
+    if (!container || typeof window.renderMathInElement !== "function") return;
+    window.renderMathInElement(container, {
+      delimiters: [
+        { left: "$$", right: "$$", display: true },
+        { left: "\\[", right: "\\]", display: true },
+        { left: "\\(", right: "\\)", display: false },
+        { left: "$", right: "$", display: false }
+      ],
+      throwOnError: false
+    });
   }
 
   /* ── HISTORY ─────────────────────────── */
